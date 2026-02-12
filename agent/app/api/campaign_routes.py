@@ -1,5 +1,6 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException
 from pydantic import BaseModel
+from app.db.sqlite import save_campaign_sequence
 import csv
 import io
 
@@ -97,3 +98,15 @@ async def upload_leads(campaign_id: int, file: UploadFile = File(...)):
 
     inserted = add_leads_bulk(campaign_id, leads)
     return {"inserted": inserted}
+
+class SequenceSaveRequest(BaseModel):
+    name: str
+    steps: list[dict]
+    stop_rule: str = "stop_on_negative"
+
+@router.post("/{campaign_id}/sequence")
+def save_sequence(campaign_id: int, req: SequenceSaveRequest):
+    c = save_campaign_sequence(campaign_id, req.model_dump())
+    if not c:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    return {"campaign_id": c.id, "saved": True}
