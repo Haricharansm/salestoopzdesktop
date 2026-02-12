@@ -8,6 +8,9 @@ from app.schemas.models import WorkspaceRequest
 from app.m365.auth import M365Auth
 from app.m365.client import M365Client
 
+from app.api.campaign_routes import router as campaign_router
+app.include_router(campaign_router)
+
 app = FastAPI(title="Salestroopz Local Agent")
 init_db()
 
