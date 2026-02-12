@@ -1,4 +1,5 @@
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from app.llm.ollama_client import check_ollama, generate_text
@@ -9,9 +10,22 @@ from app.m365.auth import M365Auth
 from app.m365.client import M365Client
 
 from app.api.campaign_routes import router as campaign_router
-app.include_router(campaign_router)
 
 app = FastAPI(title="Salestroopz Local Agent")
+
+# CORS for Vite/React -> FastAPI
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Include routers AFTER app is created
+app.include_router(campaign_router)
+
+# Init DB once
 init_db()
 
 # --- M365 setup ---
@@ -22,28 +36,34 @@ except Exception:
 
 _device_flow_holder = {"flow": None}
 
+
 class SendEmailRequest(BaseModel):
     to_email: str
     subject: str
     body: str
 
+
 @app.get("/health")
 def health():
     return {"status": "agent running"}
 
+
 @app.get("/ollama/status")
 def ollama_status():
     return {"ollama_running": check_ollama()}
+
 
 @app.post("/workspace")
 def create_workspace(data: WorkspaceRequest):
     save_workspace(data)
     return {"message": "Workspace saved locally"}
 
+
 @app.post("/campaign/generate")
 def generate_campaign(prompt: str):
     result = generate_text(prompt)
     return {"campaign_text": result}
+
 
 # ------------------- M365 endpoints -------------------
 
@@ -60,6 +80,7 @@ def m365_status():
     me = client.me()
     return {"connected": True, "user": {"displayName": me.get("displayName"), "mail": me.get("mail")}}
 
+
 @app.post("/m365/device/start")
 def m365_device_start():
     if not m365_auth:
@@ -72,6 +93,7 @@ def m365_device_start():
         "verification_uri": flow["verification_uri"],
         "message": flow["message"],
     }
+
 
 @app.post("/m365/device/complete")
 def m365_device_complete():
@@ -86,9 +108,9 @@ def m365_device_complete():
     if "access_token" not in token:
         raise HTTPException(status_code=401, detail=str(token))
 
-    # Clear flow after success
     _device_flow_holder["flow"] = None
     return {"connected": True}
+
 
 @app.post("/m365/send")
 def m365_send(req: SendEmailRequest):
