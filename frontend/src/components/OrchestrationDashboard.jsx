@@ -4,10 +4,14 @@ import LeadsPanel from "./LeadsPanel";
 import RunControls from "./RunControls";
 import ActivityPanel from "./ActivityPanel";
 import MetricsPanel from "./MetricsPanel";
+import CSVUpload from "./CSVUpload";
 import { ollamaStatus } from "../api";
 
 export default function OrchestrationDashboard() {
   const [ollamaOk, setOllamaOk] = useState(null);
+
+  // MVP: store campaignId locally (later you can list/select campaigns)
+  const [campaignId, setCampaignId] = useState(null);
 
   useEffect(() => {
     (async () => {
@@ -34,17 +38,28 @@ export default function OrchestrationDashboard() {
           {healthBadge}
         </div>
 
-        <SequenceBuilder />
+        {/* SequenceBuilder should create/select campaign */}
+        <SequenceBuilder
+          campaignId={campaignId}
+          onCampaignReady={(id) => setCampaignId(id)}
+        />
+
         <div style={{ height: 12 }} />
-        <LeadsPanel />
+
+        {/* Upload leads to this campaign */}
+        <CSVUpload campaignId={campaignId} />
+
+        <div style={{ height: 12 }} />
+
+        <LeadsPanel campaignId={campaignId} />
       </div>
 
       <div className="card">
-        <RunControls />
+        <RunControls campaignId={campaignId} />
         <div style={{ height: 12 }} />
-        <MetricsPanel />
+        <MetricsPanel campaignId={campaignId} />
         <div style={{ height: 12 }} />
-        <ActivityPanel />
+        <ActivityPanel campaignId={campaignId} />
       </div>
     </div>
   );
