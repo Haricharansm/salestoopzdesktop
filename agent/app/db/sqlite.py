@@ -47,6 +47,7 @@ class Campaign(Base):
 
     cadence_days = Column(Integer, default=3)
     max_touches = Column(Integer, default=4)
+    sequence_json = Column(Text, nullable=True)
 
     created_at = Column(DateTime, default=datetime.utcnow)
 
@@ -342,4 +343,17 @@ def get_campaign_activity(campaign_id: int, limit: int = 200):
     )
     session.close()
     return rows
+import json
+
+def save_campaign_sequence(campaign_id: int, sequence: dict):
+    session = get_session()
+    campaign = session.query(Campaign).filter(Campaign.id == campaign_id).first()
+    if not campaign:
+        session.close()
+        return None
+    campaign.sequence_json = json.dumps(sequence)
+    session.commit()
+    session.refresh(campaign)
+    session.close()
+    return campaign
 
