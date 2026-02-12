@@ -1,0 +1,99 @@
+from fastapi import APIRouter, UploadFile, File, HTTPException
+from pydantic import BaseModel
+import csv
+import io
+
+from app.db.sqlite import (
+    get_latest_workspace,
+    create_campaign,
+    set_campaign_status,
+    list_leads,
+    add_leads_bulk,
+    get_campaign_activity,
+    get_campaign,
+)
+
+router = APIRouter(prefix="/campaign", tags=["campaign"])
+
+class CampaignCreateRequest(BaseModel):
+    workspace_id: int | None = None
+    name: str
+    cadence_days: int = 3
+    max_touches: int = 4
+
+@router.post("")
+def create(req: CampaignCreateRequest):
+    ws_id = req.workspace_id
+    if ws_id is None:
+        ws = get_latest_workspace()
+        if not ws:
+            raise HTTPException(status_code=400, detail="No workspace found. Create workspace first.")
+        ws_id = ws.id
+
+    c = create_campaign(ws_id, req.name, req.cadence_days, req.max_touches)
+    return {"campaign_id": c.id, "status": c.status}
+
+@router.post("/{campaign_id}/start")
+def start(campaign_id: int):
+    c = set_campaign_status(campaign_id, "running")
+    if not c:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    return {"campaign_id": c.id, "status": c.status}
+
+@router.post("/{campaign_id}/pause")
+def pause(campaign_id: int):
+    c = set_campaign_status(campaign_id, "paused")
+    if not c:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    return {"campaign_id": c.id, "status": c.status}
+
+@router.get("/{campaign_id}/leads")
+def leads(campaign_id: int):
+    rows = list_leads(campaign_id)
+    return [
+        {
+            "id": l.id,
+            "full_name": l.full_name,
+            "email": l.email,
+            "company": l.company,
+            "state": l.state,
+            "touch_count": l.touch_count,
+            "next_touch_at": l.next_touch_at.isoformat() if l.next_touch_at else None,
+        }
+        for l in rows
+    ]
+
+@router.get("/{campaign_id}/activity")
+def activity(campaign_id: int, limit: int = 200):
+    rows = get_campaign_activity(campaign_id, limit=limit)
+    return [
+        {
+            "id": a.id,
+            "lead_id": a.lead_id,
+            "type": a.type,
+            "message": a.message,
+            "timestamp": a.timestamp.isoformat() if a.timestamp else None,
+        }
+        for a in rows
+    ]
+
+@router.post("/{campaign_id}/leads/upload")
+async def upload_leads(campaign_id: int, file: UploadFile = File(...)):
+    c = get_campaign(campaign_id)
+    if not c:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+
+    content = await file.read()
+    text = content.decode("utf-8", errors="ignore")
+
+    reader = csv.DictReader(io.StringIO(text))
+    leads = []
+    for row in reader:
+        leads.append({
+            "full_name": row.get("full_name") or row.get("name") or "",
+            "email": row.get("email") or "",
+            "company": row.get("company") or "",
+        })
+
+    inserted = add_leads_bulk(campaign_id, leads)
+    return {"inserted": inserted}
