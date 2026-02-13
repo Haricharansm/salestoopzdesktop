@@ -1,85 +1,52 @@
-from datetime import datetime, timezone
-from typing import Dict, Any
-
 from app.llm.ollama_client import generate_json
-from app.agent.prompts import positioning_prompt, messaging_prompt, sequence_prompt
-
+from app.agent.prompts import prompt_positioning, prompt_messaging, prompt_sequence
 
 class StrategyAgent:
     """
-    Strategy Agent = THINKING ONLY.
-    Outputs strategy_json + runner-ready sequence_json + run_config_json.
+    THINKING only. Outputs strategy + runner-ready sequence + run config.
     """
 
-    async def generate_positioning(self, offering: Dict[str, Any], icp: Dict[str, Any]) -> Dict[str, Any]:
-        prompt = positioning_prompt(offering, icp)
-        return generate_json(prompt, temperature=0.3)
+    async def generate_positioning(self, offering: dict, icp: dict) -> dict:
+        return generate_json(prompt_positioning(offering, icp))
 
-    async def generate_messaging(self, offering: Dict[str, Any], icp: Dict[str, Any], positioning: Dict[str, Any]) -> Dict[str, Any]:
-        prompt = messaging_prompt(offering, icp, positioning)
-        return generate_json(prompt, temperature=0.35)
+    async def generate_messaging(self, offering: dict, icp: dict, positioning: dict) -> dict:
+        return generate_json(prompt_messaging(offering, icp, positioning))
 
-    async def generate_sequence(
-        self,
-        offering: Dict[str, Any],
-        icp: Dict[str, Any],
-        positioning: Dict[str, Any],
-        messaging: Dict[str, Any],
-    ) -> Dict[str, Any]:
-        prompt = sequence_prompt(offering, icp, positioning, messaging)
-        return generate_json(prompt, temperature=0.35)
+    async def generate_sequence(self, offering: dict, icp: dict, positioning: dict, messaging: dict) -> dict:
+        return generate_json(prompt_sequence(offering, icp, positioning, messaging))
 
-    def compose_campaign_strategy(
-        self,
-        offering: Dict[str, Any],
-        icp: Dict[str, Any],
-        positioning: Dict[str, Any],
-        messaging: Dict[str, Any],
-        sequence_plan: Dict[str, Any],
-    ) -> Dict[str, Any]:
+    def compose_campaign_strategy(self, offering, icp, positioning, messaging, sequence_plan) -> dict:
         return {
             "schema_version": "1.0",
-            "generated_at": datetime.now(timezone.utc).isoformat(),
             "inputs": {"offering": offering, "icp": icp},
             "positioning": positioning,
             "messaging": messaging,
             "sequence_plan": sequence_plan,
             "guardrails": {
                 "compliance": ["no false claims", "honor opt-out immediately"]
-            },
-            "notes": {
-                "assumptions": [],
-                "recommended_enrichment": []
             }
         }
 
-    def to_runner_sequence_json(self, sequence_plan: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Converts strategy output into runner-friendly operational format.
-        """
+    def to_runner_sequence_json(self, sequence_plan: dict) -> dict:
         steps = []
         templates = {}
 
         for step in sequence_plan.get("steps", []):
             sid = step["step_id"]
             templates[sid] = step["template"]
+
             steps.append({
                 "step_id": sid,
                 "type": "send_email",
                 "channel": step.get("channel", "email"),
                 "delay_hours": int(step.get("delay_hours_from_prev", 0)),
                 "template_key": sid,
-                "variants": ["v1"],
                 "stop_if": ["replied", "bounced", "unsubscribed"]
             })
 
-        return {
-            "schema_version": "1.0",
-            "steps": steps,
-            "templates": templates
-        }
+        return {"schema_version": "1.0", "steps": steps, "templates": templates}
 
-    def default_run_config(self) -> Dict[str, Any]:
+    def default_run_config(self) -> dict:
         return {
             "schema_version": "1.0",
             "timezone": "America/Chicago",
@@ -87,5 +54,6 @@ class StrategyAgent:
             "daily_send_limit": 50,
             "max_concurrent_leads": 10,
             "min_minutes_between_sends": 2,
-            "allowed_days": ["Mon", "Tue", "Wed", "Thu", "Fri"]
+            "allowed_days": ["Mon", "Tue", "Wed", "Thu", "Fri"],
         }
+
