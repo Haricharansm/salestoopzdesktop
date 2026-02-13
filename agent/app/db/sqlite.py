@@ -9,6 +9,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import declarative_base, sessionmaker, relationship
 from datetime import datetime, timedelta
+import json
 
 DATABASE_URL = "sqlite:///salestroopz.db"
 
@@ -42,12 +43,16 @@ class Campaign(Base):
     workspace_id = Column(Integer, ForeignKey("workspace.id"))
     name = Column(String)
 
-    status = Column(String, default="draft")  
+    status = Column(String, default="draft")
     # draft | running | paused | completed
 
     cadence_days = Column(Integer, default=3)
     max_touches = Column(Integer, default=4)
+
+    # NEW: strategy + runner configs
+    strategy_json = Column(Text, nullable=True)
     sequence_json = Column(Text, nullable=True)
+    run_config_json = Column(Text, nullable=True)
 
     created_at = Column(DateTime, default=datetime.utcnow)
 
@@ -116,8 +121,31 @@ class ActivityLog(Base):
 # ----------------------------
 # DB Helpers
 # ----------------------------
+def _ensure_campaign_columns():
+    """
+    Lightweight migration for existing SQLite DBs.
+    Adds missing columns if the table already exists.
+    """
+    conn = engine.raw_connection()
+    cur = conn.cursor()
+
+    try:
+        cur.execute("ALTER TABLE campaign ADD COLUMN strategy_json TEXT")
+    except Exception:
+        pass
+
+    try:
+        cur.execute("ALTER TABLE campaign ADD COLUMN run_config_json TEXT")
+    except Exception:
+        pass
+
+    conn.commit()
+    conn.close()
+
+
 def init_db():
     Base.metadata.create_all(bind=engine)
+    _ensure_campaign_columns()
 
 
 def get_session():
@@ -139,6 +167,7 @@ def save_workspace(data):
     session.add(workspace)
     session.commit()
     session.close()
+
 
 # ----------------------------
 # Workspace helpers
@@ -162,6 +191,40 @@ def create_campaign(workspace_id: int, name: str, cadence_days: int = 3, max_tou
         cadence_days=cadence_days,
         max_touches=max_touches,
     )
+    session.add(campaign)
+    session.commit()
+    session.refresh(campaign)
+    session.close()
+    return campaign
+
+
+def create_campaign_from_strategy(
+    workspace_id: int,
+    name: str,
+    strategy: dict,
+    sequence: dict,
+    run_config: dict,
+    status: str = "running",
+    cadence_days: int = 3,
+    max_touches: int = 4,
+):
+    """
+    Creates a campaign fully from agent-generated strategy.
+    Stores strategy_json + sequence_json + run_config_json.
+    """
+    session = get_session()
+
+    campaign = Campaign(
+        workspace_id=workspace_id,
+        name=name,
+        status=status,
+        cadence_days=cadence_days,
+        max_touches=max_touches,
+        strategy_json=json.dumps(strategy),
+        sequence_json=json.dumps(sequence),
+        run_config_json=json.dumps(run_config),
+    )
+
     session.add(campaign)
     session.commit()
     session.refresh(campaign)
@@ -201,6 +264,45 @@ def list_campaigns(workspace_id: int):
     return campaigns
 
 
+def save_campaign_sequence(campaign_id: int, sequence: dict):
+    session = get_session()
+    campaign = session.query(Campaign).filter(Campaign.id == campaign_id).first()
+    if not campaign:
+        session.close()
+        return None
+    campaign.sequence_json = json.dumps(sequence)
+    session.commit()
+    session.refresh(campaign)
+    session.close()
+    return campaign
+
+
+def save_campaign_strategy(campaign_id: int, strategy: dict):
+    session = get_session()
+    campaign = session.query(Campaign).filter(Campaign.id == campaign_id).first()
+    if not campaign:
+        session.close()
+        return None
+    campaign.strategy_json = json.dumps(strategy)
+    session.commit()
+    session.refresh(campaign)
+    session.close()
+    return campaign
+
+
+def save_campaign_run_config(campaign_id: int, run_config: dict):
+    session = get_session()
+    campaign = session.query(Campaign).filter(Campaign.id == campaign_id).first()
+    if not campaign:
+        session.close()
+        return None
+    campaign.run_config_json = json.dumps(run_config)
+    session.commit()
+    session.refresh(campaign)
+    session.close()
+    return campaign
+
+
 # ----------------------------
 # Lead helpers
 # ----------------------------
@@ -210,7 +312,6 @@ def add_leads_bulk(campaign_id: int, leads: list[dict]):
     """
     session = get_session()
 
-    # (Optional) de-dupe within campaign by email
     existing = set(
         e[0] for e in session.query(Lead.email).filter(Lead.campaign_id == campaign_id).all()
         if e and e[0]
@@ -343,17 +444,3 @@ def get_campaign_activity(campaign_id: int, limit: int = 200):
     )
     session.close()
     return rows
-import json
-
-def save_campaign_sequence(campaign_id: int, sequence: dict):
-    session = get_session()
-    campaign = session.query(Campaign).filter(Campaign.id == campaign_id).first()
-    if not campaign:
-        session.close()
-        return None
-    campaign.sequence_json = json.dumps(sequence)
-    session.commit()
-    session.refresh(campaign)
-    session.close()
-    return campaign
-
