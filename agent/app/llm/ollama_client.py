@@ -3,7 +3,7 @@ import json
 import re
 
 OLLAMA_URL = "http://127.0.0.1:11434/api/generate"
-MODEL_NAME = "llama3.1"
+MODEL_NAME = os.getenv("OLLAMA_MODEL", "mistral:latest")
 
 
 def check_ollama():
@@ -14,7 +14,7 @@ def check_ollama():
         return False
 
 
-def generate_text(prompt: str, temperature: float = 0.4) -> str:
+def generate_text(prompt: str, temperature: float = 0.3) -> str:
     payload = {
         "model": MODEL_NAME,
         "prompt": prompt,
