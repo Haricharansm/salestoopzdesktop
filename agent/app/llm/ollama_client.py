@@ -21,9 +21,8 @@ def generate_text(prompt: str, temperature: float = 0.3) -> str:
         "prompt": prompt,
         "stream": False,
         "options": {
-            "temperature": temperature
+            "temperature": temperature,
             "num_predict": 700
-
         }
     }
 
@@ -33,6 +32,7 @@ def generate_text(prompt: str, temperature: float = 0.3) -> str:
         return response.json().get("response", "")
     else:
         raise Exception(f"Error generating text (status={response.status_code}): {response.text}")
+
 
 
 def generate_json(prompt: str, temperature: float = 0.35, retries: int = 2) -> dict:
