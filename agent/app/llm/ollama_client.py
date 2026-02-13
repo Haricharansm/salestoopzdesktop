@@ -22,11 +22,11 @@ def generate_text(prompt: str, temperature: float = 0.3) -> str:
         "stream": False,
         "options": {
             "temperature": temperature,
-            "num_predict": 700
+            "num_predict": 350
         }
     }
 
-    response = requests.post(OLLAMA_URL, json=payload, timeout=120)
+    response = requests.post(OLLAMA_URL, json=payload, timeout=300)
 
     if response.status_code == 200:
         return response.json().get("response", "")
