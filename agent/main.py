@@ -10,6 +10,7 @@ from app.m365.auth import M365Auth
 from app.m365.client import M365Client
 
 from app.api.campaign_routes import router as campaign_router
+from app.api.agent_routes import router as agent_router
 
 app = FastAPI(title="Salestroopz Local Agent")
 
@@ -24,6 +25,8 @@ app.add_middleware(
 
 # Include routers AFTER app is created
 app.include_router(campaign_router)
+app.include_router(agent_router)
+
 
 # Init DB once
 init_db()
