@@ -1,13 +1,12 @@
 import json
 
-
-def positioning_prompt(offering: dict, icp: dict) -> str:
+def prompt_positioning(offering: dict, icp: dict) -> str:
     return f"""
 SYSTEM:
 You are an expert B2B outbound strategist. Return ONLY valid JSON. No markdown.
 
 USER:
-Create positioning for outbound outreach.
+Create positioning for outbound email outreach.
 
 OFFERING:
 {json.dumps(offering)}
@@ -17,9 +16,9 @@ ICP:
 
 CONSTRAINTS:
 - No hype, no unverifiable claims
-- Be concise and practical for email outreach
+- Keep it practical and concise
 
-Return ONLY JSON matching this schema:
+Return ONLY JSON:
 {{
   "target_customer": "",
   "pain_points": [],
@@ -32,13 +31,13 @@ Return ONLY JSON matching this schema:
 """.strip()
 
 
-def messaging_prompt(offering: dict, icp: dict, positioning: dict) -> str:
+def prompt_messaging(offering: dict, icp: dict, positioning: dict) -> str:
     return f"""
 SYSTEM:
 You are a B2B cold email copywriter. Return ONLY valid JSON. No markdown.
 
 USER:
-Generate messaging assets using this positioning.
+Generate messaging assets using the positioning.
 
 OFFERING:
 {json.dumps(offering)}
@@ -60,7 +59,7 @@ Return ONLY JSON:
 """.strip()
 
 
-def sequence_prompt(offering: dict, icp: dict, positioning: dict, messaging: dict) -> str:
+def prompt_sequence(offering: dict, icp: dict, positioning: dict, messaging: dict) -> str:
     return f"""
 SYSTEM:
 You design outbound sequences. Return ONLY valid JSON. No markdown.
@@ -70,10 +69,9 @@ Design an EMAIL-ONLY outreach sequence.
 
 RULES:
 - 4 to 6 steps total
-- Each email < 120 words
-- Include a soft "right person?" CTA in at least one step
-- Include a clear opt-out line in the final email
-- Do not include links unless the offering provides them
+- each email < 120 words
+- include a soft "right person?" CTA at least once
+- include opt-out line in final step
 
 OFFERING:
 {json.dumps(offering)}
@@ -103,3 +101,4 @@ Return ONLY JSON:
   "stop_rules": {{ "stop_on_reply": true, "stop_on_oOO": true, "stop_on_bounce": true }}
 }}
 """.strip()
+
