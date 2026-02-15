@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from app.llm.ollama_client import check_ollama, generate_text
-from app.db.sqlite import init_db, save_workspace
+from app.db.sqlite import init_db, save_workspace, log_event
 from app.schemas.models import WorkspaceRequest
 
 from app.m365.auth import M365Auth
@@ -12,12 +12,15 @@ from app.m365.client import M365Client
 from app.api.campaign_routes import router as campaign_router
 from app.api.agent_routes import router as agent_router
 
+from datetime import datetime, timedelta
+
+
 app = FastAPI(title="Salestroopz Local Agent")
 
 # CORS for Vite/React -> FastAPI
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],  # local desktop; tighten later if you want
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -27,11 +30,8 @@ app.add_middleware(
 app.include_router(campaign_router)
 app.include_router(agent_router)
 
-
-# Init DB once
-init_db()
-
 # --- M365 setup ---
+# NOTE: keep this lightweight; device-flow does the real work later
 try:
     m365_auth = M365Auth()
 except Exception:
@@ -46,9 +46,46 @@ class SendEmailRequest(BaseModel):
     body: str
 
 
+# ----------------------------
+# Startup: init DB + bootstrap autonomous tick
+# ----------------------------
+@app.on_event("startup")
+def on_startup():
+    """
+    Keep startup safe + fast:
+    - init DB
+    - enqueue first scheduler tick (fails soft if queue not present yet)
+    """
+    init_db()
+    try:
+        # Only available after you add app/queue/job_queue.py
+        from app.queue.job_queue import enqueue
+
+        # Seed the scheduler loop (runner will keep scheduling subsequent ticks)
+        enqueue("tick", {}, run_at=datetime.utcnow() + timedelta(seconds=1))
+        log_event("api.startup", message="DB initialized; tick seeded")
+    except Exception as e:
+        # Do not crash API if queue isn't wired yet
+        try:
+            log_event("api.startup.no_queue", level="WARN", message=str(e))
+        except Exception:
+            pass
+
+
+# ----------------------------
+# Health & Status
+# ----------------------------
 @app.get("/health")
 def health():
-    return {"status": "agent running"}
+    """
+    Electron waits on this endpoint to decide backend readiness.
+    Keep it fast and deterministic.
+    """
+    return {
+        "ok": True,
+        "service": "salestroopz-api",
+        "status": "running",
+    }
 
 
 @app.get("/ollama/status")
@@ -56,6 +93,9 @@ def ollama_status():
     return {"ollama_running": check_ollama()}
 
 
+# ----------------------------
+# Workspace + Simple LLM test
+# ----------------------------
 @app.post("/workspace")
 def create_workspace(data: WorkspaceRequest):
     save_workspace(data)
@@ -68,8 +108,9 @@ def generate_campaign(prompt: str):
     return {"campaign_text": result}
 
 
-# ------------------- M365 endpoints -------------------
-
+# -------------------
+# M365 endpoints
+# -------------------
 @app.get("/m365/status")
 def m365_status():
     if not m365_auth:
@@ -81,7 +122,10 @@ def m365_status():
 
     client = M365Client(token["access_token"])
     me = client.me()
-    return {"connected": True, "user": {"displayName": me.get("displayName"), "mail": me.get("mail")}}
+    return {
+        "connected": True,
+        "user": {"displayName": me.get("displayName"), "mail": me.get("mail")},
+    }
 
 
 @app.post("/m365/device/start")
